@@ -237,33 +237,22 @@ st.set_page_config(page_title="GST Tax Offset Calculator", layout="wide")
 
 st.title("GST Tax Offset Calculator")
 
-st.markdown("""
-This application calculates GST tax offsets based on the following rules:
-- IGST balance can be utilized against all three liabilities (IGST, CGST, SGST)
-- CGST balance can be utilized against CGST & IGST liabilities
-- SGST balance can be utilized against SGST & IGST liabilities
-- Priority is to utilize IGST balance first against IGST and then equally among CGST & SGST
-- For surplus/deficit scenarios: if there is a deficit in one tax (CGST/SGST) and surplus in the other, 
-  the surplus is used to offset IGST liability, allowing IGST balance to be used for the deficit tax
-- Once balances are utilized, remaining liabilities are to be paid in cash
-""")
-
 # Create three columns for input
 col1, col2, col3 = st.columns(3)
 
 with col1:
     st.subheader("Available Balances")
-    igst_b = st.number_input("IGST Balance", min_value=0.0, value=10000.0, step=100.0)
-    cgst_b = st.number_input("CGST Balance", min_value=0.0, value=5000.0, step=100.0)
-    sgst_b = st.number_input("SGST Balance", min_value=0.0, value=5000.0, step=100.0)
+    igst_b = st.number_input("IGST Balance", min_value=0.0, value=0.0, step=100.0)
+    cgst_b = st.number_input("CGST Balance", min_value=0.0, value=0.0, step=100.0)
+    sgst_b = st.number_input("SGST Balance", min_value=0.0, value=0.0, step=100.0)
     total_balance = igst_b + cgst_b + sgst_b
     st.info(f"Total Balance: {total_balance:.2f}")
 
 with col2:
     st.subheader("Tax Liabilities")
-    igst_l = st.number_input("IGST Liability", min_value=0.0, value=8000.0, step=100.0)
-    cgst_l = st.number_input("CGST Liability", min_value=0.0, value=6000.0, step=100.0)
-    sgst_l = st.number_input("SGST Liability", min_value=0.0, value=6000.0, step=100.0)
+    igst_l = st.number_input("IGST Liability", min_value=0.0, value=0.0, step=100.0)
+    cgst_l = st.number_input("CGST Liability", min_value=0.0, value=0.0, step=100.0)
+    sgst_l = st.number_input("SGST Liability", min_value=0.0, value=0.0, step=100.0)
     total_liability = igst_l + cgst_l + sgst_l
     st.info(f"Total Liability: {total_liability:.2f}")
 
