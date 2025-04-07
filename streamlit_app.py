@@ -34,176 +34,110 @@ def calculate_gst_offsets(igst_b, cgst_b, sgst_b, igst_l, cgst_l, sgst_l):
     rem_cgst_l = cgst_l
     rem_sgst_l = sgst_l
     
-    # Calculate potential surpluses and deficits after self-offset
-    cgst_surplus = max(0, cgst_b - cgst_l)
-    sgst_surplus = max(0, sgst_b - sgst_l)
-    cgst_deficit = max(0, cgst_l - cgst_b)
-    sgst_deficit = max(0, sgst_l - sgst_b)
+    # Calculate net (balance - liability) for each tax type
+    igst_n = igst_b - igst_l
+    cgst_n = cgst_b - cgst_l
+    sgst_n = sgst_b - sgst_l
     
-    # Check if cross-utilization chain is needed
-    need_cross_utilization = (cgst_surplus > 0 and sgst_deficit > 0) or (sgst_surplus > 0 and cgst_deficit > 0)
+    # 1. Utilize the IGST balance against CGST & SGST liabilities first, then IGST liability
     
-    # STEP 1: If cross-utilization is needed, clear IGST liability first using other surpluses
-    if need_cross_utilization:
-        # First use CGST surplus against IGST liability if possible
-        if cgst_surplus > 0 and rem_igst_l > 0:
-            cgst_against_igst = min(cgst_surplus, rem_igst_l)
-            cgst_offset_against_igst += cgst_against_igst
-            rem_cgst_b -= cgst_against_igst
-            rem_igst_l -= cgst_against_igst
-        
-        # Then use SGST surplus against remaining IGST liability if possible
-        if sgst_surplus > 0 and rem_igst_l > 0:
-            sgst_against_igst = min(sgst_surplus, rem_igst_l)
-            sgst_offset_against_igst += sgst_against_igst
-            rem_sgst_b -= sgst_against_igst
-            rem_igst_l -= sgst_against_igst
-        
-        # If there's still IGST liability, use IGST balance
-        if rem_igst_l > 0 and rem_igst_b > 0:
-            igst_against_igst = min(rem_igst_b, rem_igst_l)
-            igst_offset_against_igst += igst_against_igst
-            rem_igst_b -= igst_against_igst
-            rem_igst_l -= igst_against_igst
-        
-        # Now use IGST balance to offset deficits in CGST and SGST
-        if rem_igst_b > 0:
-            # First use IGST for CGST deficit if exists
-            if rem_cgst_l > min(rem_cgst_b, cgst_l):  # Check if there's still CGST liability after self-offset
-                igst_for_cgst = min(rem_igst_b, rem_cgst_l - min(rem_cgst_b, cgst_l))
-                igst_offset_against_cgst += igst_for_cgst
-                rem_igst_b -= igst_for_cgst
-                rem_cgst_l -= igst_for_cgst
-            
-            # Then use remaining IGST for SGST deficit if exists
-            if rem_sgst_l > min(rem_sgst_b, sgst_l):  # Check if there's still SGST liability after self-offset
-                igst_for_sgst = min(rem_igst_b, rem_sgst_l - min(rem_sgst_b, sgst_l))
-                igst_offset_against_sgst += igst_for_sgst
-                rem_igst_b -= igst_for_sgst
-                rem_sgst_l -= igst_for_sgst
-    else:
-        # STEP 2: If no cross-utilization needed, follow standard offset rules
-        # First use IGST balance against IGST liability
-        igst_offset_against_igst = min(rem_igst_b, rem_igst_l)
-        rem_igst_b -= igst_offset_against_igst
-        rem_igst_l -= igst_offset_against_igst
-    
-    # STEP 3: Standard offsetting for remaining balances
-    # Use CGST balance against CGST liability
-    cgst_for_cgst = min(rem_cgst_b, rem_cgst_l)
-    cgst_offset_against_cgst += cgst_for_cgst
-    rem_cgst_b -= cgst_for_cgst
-    rem_cgst_l -= cgst_for_cgst
-    
-    # Use SGST balance against SGST liability
-    sgst_for_sgst = min(rem_sgst_b, rem_sgst_l)
-    sgst_offset_against_sgst += sgst_for_sgst
-    rem_sgst_b -= sgst_for_sgst
-    rem_sgst_l -= sgst_for_sgst
-    
-    # STEP 4: Use any remaining IGST balance optimally
+    # First, offset the amount of difference in cgst_n and sgst_n against the one which is less
     if rem_igst_b > 0:
-        # If we still have CGST liability, use IGST
-        if rem_cgst_l > 0:
-            additional_igst_for_cgst = min(rem_igst_b, rem_cgst_l)
-            igst_offset_against_cgst += additional_igst_for_cgst
-            rem_igst_b -= additional_igst_for_cgst
-            rem_cgst_l -= additional_igst_for_cgst
+        if cgst_n < sgst_n and rem_cgst_l > 0:
+            # CGST net is less, so offset the difference to balance them
+            diff = min(sgst_n - cgst_n, rem_igst_b, rem_cgst_l)
+            igst_offset_against_cgst = diff
+            rem_igst_b -= diff
+            rem_cgst_l -= diff
+        elif sgst_n < cgst_n and rem_sgst_l > 0:
+            # SGST net is less, so offset the difference to balance them
+            diff = min(cgst_n - sgst_n, rem_igst_b, rem_sgst_l)
+            igst_offset_against_sgst = diff
+            rem_igst_b -= diff
+            rem_sgst_l -= diff
+    
+    # Then if IGST balance still > 0 and CGST & SGST liabilities are > 0, use leftover balance equally
+    if rem_igst_b > 0 and rem_cgst_l > 0 and rem_sgst_l > 0:
+        # Calculate equal distribution amount (limited by either half of IGST or the smaller liability)
+        equal_offset = min(rem_igst_b / 2, min(rem_cgst_l, rem_sgst_l))
         
-        # If we still have SGST liability, use remaining IGST
-        if rem_igst_l == 0 and rem_sgst_l > 0 and rem_igst_b > 0:
-            additional_igst_for_sgst = min(rem_igst_b, rem_sgst_l)
-            igst_offset_against_sgst += additional_igst_for_sgst
-            rem_igst_b -= additional_igst_for_sgst
-            rem_sgst_l -= additional_igst_for_sgst
-    
-    # STEP 5: Use any remaining CGST/SGST balances for IGST liability if needed
-    if rem_igst_l > 0:
-        # Use remaining CGST balance for IGST liability
-        if rem_cgst_b > 0:
-            additional_cgst_for_igst = min(rem_cgst_b, rem_igst_l)
-            cgst_offset_against_igst += additional_cgst_for_igst
-            rem_cgst_b -= additional_cgst_for_igst
-            rem_igst_l -= additional_cgst_for_igst
+        # Apply equal offsets
+        igst_offset_against_cgst += equal_offset
+        igst_offset_against_sgst += equal_offset
+        rem_igst_b -= (equal_offset * 2)
+        rem_cgst_l -= equal_offset
+        rem_sgst_l -= equal_offset
         
-        # Use remaining SGST balance for IGST liability
-        if rem_sgst_b > 0 and rem_igst_l > 0:
-            additional_sgst_for_igst = min(rem_sgst_b, rem_igst_l)
-            sgst_offset_against_igst += additional_sgst_for_igst
-            rem_sgst_b -= additional_sgst_for_igst
-            rem_igst_l -= additional_sgst_for_igst
+        # If there's still IGST balance and one liability remains
+        if rem_igst_b > 0:
+            if rem_cgst_l > 0:
+                additional_offset = min(rem_igst_b, rem_cgst_l)
+                igst_offset_against_cgst += additional_offset
+                rem_igst_b -= additional_offset
+                rem_cgst_l -= additional_offset
+            elif rem_sgst_l > 0:
+                additional_offset = min(rem_igst_b, rem_sgst_l)
+                igst_offset_against_sgst += additional_offset
+                rem_igst_b -= additional_offset
+                rem_sgst_l -= additional_offset
     
-    # Calculate remaining balances and cash payments required
-    remaining_igst_balance = rem_igst_b
-    remaining_cgst_balance = rem_cgst_b
-    remaining_sgst_balance = rem_sgst_b
+    # Then if IGST balance is still > 0, use it against IGST liability
+    if rem_igst_b > 0 and rem_igst_l > 0:
+        offset = min(rem_igst_b, rem_igst_l)
+        igst_offset_against_igst = offset
+        rem_igst_b -= offset
+        rem_igst_l -= offset
     
-    cash_payment_igst = max(0, rem_igst_l)
-    cash_payment_cgst = max(0, rem_cgst_l)
-    cash_payment_sgst = max(0, rem_sgst_l)
-    total_cash_payment = cash_payment_igst + cash_payment_cgst + cash_payment_sgst
+    # 2. Utilize SGST & CGST balances against IGST liability first, then self
     
-    return {
-        "igst_offset_against_igst": igst_offset_against_igst,
-        "igst_offset_against_cgst": igst_offset_against_cgst,
-        "igst_offset_against_sgst": igst_offset_against_sgst,
-        "cgst_offset_against_igst": cgst_offset_against_igst,
-        "cgst_offset_against_cgst": cgst_offset_against_cgst,
-        "sgst_offset_against_igst": sgst_offset_against_igst,
-        "sgst_offset_against_sgst": sgst_offset_against_sgst,
-        "remaining_igst_balance": remaining_igst_balance,
-        "remaining_cgst_balance": remaining_cgst_balance,
-        "remaining_sgst_balance": remaining_sgst_balance,
-        "cash_payment_igst": cash_payment_igst,
-        "cash_payment_cgst": cash_payment_cgst,
-        "cash_payment_sgst": cash_payment_sgst,
-        "total_cash_payment": total_cash_payment
-    }
+    # Offset CGST or SGST (one with higher balance) with IGST by the amount of difference
+    if rem_cgst_b > rem_sgst_b and rem_igst_l > 0:
+        diff = min(rem_cgst_b - rem_sgst_b, rem_igst_l)
+        cgst_offset_against_igst = diff
+        rem_cgst_b -= diff
+        rem_igst_l -= diff
+    elif rem_sgst_b > rem_cgst_b and rem_igst_l > 0:
+        diff = min(rem_sgst_b - rem_cgst_b, rem_igst_l)
+        sgst_offset_against_igst = diff
+        rem_sgst_b -= diff
+        rem_igst_l -= diff
     
-    # Step 3: Distribute remaining IGST balance optimally between CGST and SGST
-    if rem_igst_b > 0 and (rem_cgst_l > 0 or rem_sgst_l > 0):
-        # Calculate total remaining CS liability
-        total_cs_liability = rem_cgst_l + rem_sgst_l
+    # If IGST liability > 0, utilize CGST & SGST balances equally against IGST liability
+    if rem_igst_l > 0 and (rem_cgst_b > 0 or rem_sgst_b > 0):
+        equal_offset = min(min(rem_cgst_b, rem_sgst_b), rem_igst_l / 2)
         
-        if rem_igst_b >= total_cs_liability:
-            # IGST can cover all remaining liabilities
-            igst_offset_against_cgst += rem_cgst_l
-            igst_offset_against_sgst += rem_sgst_l
-            rem_igst_b -= (rem_cgst_l + rem_sgst_l)
-            rem_cgst_l = 0
-            rem_sgst_l = 0
-        else:
-            # Need to distribute proportionally
-            if total_cs_liability > 0:
-                cgst_proportion = rem_cgst_l / total_cs_liability
-                
-                # Calculate how much IGST to allocate to CGST
-                additional_igst_for_cgst = min(rem_cgst_l, round(rem_igst_b * cgst_proportion, 2))
-                igst_offset_against_cgst += additional_igst_for_cgst
-                rem_igst_b -= additional_igst_for_cgst
-                rem_cgst_l -= additional_igst_for_cgst
-                
-                # Use any remaining IGST for SGST
-                additional_igst_for_sgst = min(rem_sgst_l, rem_igst_b)
-                igst_offset_against_sgst += additional_igst_for_sgst
-                rem_igst_b -= additional_igst_for_sgst
-                rem_sgst_l -= additional_igst_for_sgst
-    
-    # Step 4: Use any remaining CGST and SGST balances for IGST liability
-    if rem_igst_l > 0:
-        # Use remaining CGST balance for IGST liability
-        if rem_cgst_b > 0:
-            additional_cgst_for_igst = min(rem_cgst_b, rem_igst_l)
-            cgst_offset_against_igst += additional_cgst_for_igst
-            rem_cgst_b -= additional_cgst_for_igst
-            rem_igst_l -= additional_cgst_for_igst
+        if equal_offset > 0:
+            cgst_offset_against_igst += equal_offset
+            sgst_offset_against_igst += equal_offset
+            rem_cgst_b -= equal_offset
+            rem_sgst_b -= equal_offset
+            rem_igst_l -= (equal_offset * 2)
         
-        # Use remaining SGST balance for IGST liability
-        if rem_sgst_b > 0:
-            additional_sgst_for_igst = min(rem_sgst_b, rem_igst_l)
-            sgst_offset_against_igst += additional_sgst_for_igst
-            rem_sgst_b -= additional_sgst_for_igst
-            rem_igst_l -= additional_sgst_for_igst
+        # If there's still IGST liability and one balance remains
+        if rem_igst_l > 0:
+            if rem_cgst_b > 0:
+                additional_offset = min(rem_cgst_b, rem_igst_l)
+                cgst_offset_against_igst += additional_offset
+                rem_cgst_b -= additional_offset
+                rem_igst_l -= additional_offset
+            elif rem_sgst_b > 0:
+                additional_offset = min(rem_sgst_b, rem_igst_l)
+                sgst_offset_against_igst += additional_offset
+                rem_sgst_b -= additional_offset
+                rem_igst_l -= additional_offset
+    
+    # Utilize the CGST & SGST balances with CGST & SGST liabilities respectively
+    if rem_cgst_b > 0 and rem_cgst_l > 0:
+        offset = min(rem_cgst_b, rem_cgst_l)
+        cgst_offset_against_cgst = offset
+        rem_cgst_b -= offset
+        rem_cgst_l -= offset
+    
+    if rem_sgst_b > 0 and rem_sgst_l > 0:
+        offset = min(rem_sgst_b, rem_sgst_l)
+        sgst_offset_against_sgst = offset
+        rem_sgst_b -= offset
+        rem_sgst_l -= offset
     
     # Calculate remaining balances and cash payments required
     remaining_igst_balance = rem_igst_b
